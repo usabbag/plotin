@@ -1,0 +1,97 @@
+import mplfinance as mpf
+import pandas as pd
+import numpy as np
+import os
+import logging
+
+def generate_chart(data, symbol, output_dir, chart_config=None):
+    """
+    Generate a candlestick chart with technical indicators for a stock.
+    
+    Args:
+        data (pandas.DataFrame): Stock data with indicators
+        symbol (str): Stock symbol
+        output_dir (str): Directory to save the chart
+        chart_config (dict): Chart configuration
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    if chart_config is None:
+        chart_config = {
+            'up_color': 'green',
+            'down_color': 'red',
+            'sma_50_color': 'blue',
+            'sma_128_color': 'orange'
+        }
+    
+    try:
+        # Ensure output directory exists
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Define file path
+        filepath = os.path.join(output_dir, f"{symbol}_chart.png")
+        
+        # Debug info
+        logging.info(f"Data shape: {data.shape}")
+        logging.info(f"Index type: {type(data.index)}")
+        
+        # Convert index to datetime if not already
+        if not isinstance(data.index, pd.DatetimeIndex):
+            logging.info("Converting index to DatetimeIndex")
+            data.index = pd.to_datetime(data.index)
+        
+        # Create a new DataFrame with explicitly converted types to avoid mplfinance issues
+        new_data = pd.DataFrame(index=data.index)
+        new_data['Open'] = data['Open'].astype(np.float64)
+        new_data['High'] = data['High'].astype(np.float64)
+        new_data['Low'] = data['Low'].astype(np.float64)
+        new_data['Close'] = data['Close'].astype(np.float64)
+        new_data['Volume'] = data['Volume'].astype(np.float64)
+        new_data['SMA50'] = data['SMA50'].astype(np.float64)
+        new_data['SMA128'] = data['SMA128'].astype(np.float64)
+        
+        # Filter to visualize only the last 30 days (or requested period)
+        last_n_rows = min(30 * 6, len(new_data))  # 6 4-hour candles per day
+        data_to_plot = new_data.iloc[-last_n_rows:].copy()
+        
+        logging.info(f"Plot data shape: {data_to_plot.shape}")
+        
+        # Set colors
+        mc = mpf.make_marketcolors(
+            up=chart_config['up_color'],
+            down=chart_config['down_color'],
+            edge='inherit',
+            wick='black',
+            volume='inherit'
+        )
+        
+        # Set style
+        s = mpf.make_mpf_style(marketcolors=mc)
+        
+        # Plot additional indicators
+        sma_50 = mpf.make_addplot(data_to_plot['SMA50'], color=chart_config['sma_50_color'], width=1)
+        sma_128 = mpf.make_addplot(data_to_plot['SMA128'], color=chart_config['sma_128_color'], width=1)
+        
+        # Create the plot
+        mpf.plot(
+            data_to_plot,
+            type='candle',
+            style=s,
+            title=f'{symbol} - 4h Chart with SMAs',
+            addplot=[sma_50, sma_128],
+            savefig=filepath,
+            figsize=(12, 8)
+        )
+        
+        logging.info(f"Chart generated successfully for {symbol}. Saved to {filepath}")
+        return True
+        
+    except Exception as e:
+        logging.error(f"Error generating chart for {symbol}: {str(e)}")
+        for col in ['Open', 'High', 'Low', 'Close']:
+            if col in data.columns:
+                non_float = [x for x in data[col] if not isinstance(x, (float, int))]
+                if non_float:
+                    logging.error(f"Non-numeric values in {col}: {non_float[:5]}")
+        return False 
