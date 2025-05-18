@@ -10,10 +10,10 @@ output:
   directory: ./output
   
 chart:
-  up_color: green
-  down_color: red
-  sma_50_color: blue
-  sma_128_color: orange
+  up_color: "#26a69a"    # Teal green
+  down_color: "#ef5350"  # Light red
+  sma_50_color: "#42a5f5"   # Bright blue
+  sma_128_color: "#ffb74d"  # Light orange
 
 # Telegram bot configuration
 telegram:

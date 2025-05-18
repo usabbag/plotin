@@ -62,16 +62,29 @@ def generate_chart(data, symbol, output_dir, chart_config=None):
             up=chart_config['up_color'],
             down=chart_config['down_color'],
             edge='inherit',
-            wick='black',
+            wick='inherit',
             volume='inherit'
         )
         
-        # Set style
-        s = mpf.make_mpf_style(marketcolors=mc)
+        # Set style with dark background
+        s = mpf.make_mpf_style(
+            marketcolors=mc,
+            figcolor='#1f1f1f',    # Dark figure background
+            facecolor='#2d2d2d',    # Dark plot area background
+            edgecolor='#444444',    # Edge color
+            gridcolor='#444444',    # Grid lines
+            gridstyle=':',          # Dotted grid
+            y_on_right=True,        # Price axis on right side
+            rc={'axes.labelcolor': 'white', 
+                'axes.edgecolor': 'white',
+                'xtick.color': 'white',
+                'ytick.color': 'white',
+                'text.color': 'white'}
+        )
         
-        # Plot additional indicators
-        sma_50 = mpf.make_addplot(data_to_plot['SMA50'], color=chart_config['sma_50_color'], width=1)
-        sma_128 = mpf.make_addplot(data_to_plot['SMA128'], color=chart_config['sma_128_color'], width=1)
+        # Plot additional indicators with thicker lines
+        sma_50 = mpf.make_addplot(data_to_plot['SMA50'], color=chart_config['sma_50_color'], width=2.5)
+        sma_128 = mpf.make_addplot(data_to_plot['SMA128'], color=chart_config['sma_128_color'], width=2.5)
         
         # Create the plot
         mpf.plot(
