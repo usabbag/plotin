@@ -144,7 +144,7 @@ async def run_scheduled_mode(config, run_initial=False):
     # Create schedule manager
     schedule_manager = create_schedule_manager_from_config(
         config, 
-        lambda: asyncio.create_task(scheduled_task(config))
+        lambda: asyncio.run(scheduled_task(config))
     )
     
     try:
