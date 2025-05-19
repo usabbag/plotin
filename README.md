@@ -2,6 +2,8 @@
 
 A simple Python tool to generate finance charts with technical indicators and send them to a Telegram channel.
 
+![Logo](https://github.com/user-attachments/assets/243af206-b8cb-43e5-8d49-e09603cc1fab)
+
 ## Features
 
 - Retrieves historical stock data using yfinance
