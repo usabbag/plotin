@@ -1,0 +1,33 @@
+stocks:
+  - NET
+  - AMZN
+  - TSM
+
+time_period: 30  # days
+interval: 4h     # 4-hour interval
+
+output:
+  directory: ./output
+  
+chart:
+  up_color: "#26a69a"    # Teal green
+  down_color: "#ef5350"  # Light red
+  sma_50_color: "#42a5f5"   # Bright blue
+  sma_128_color: "#ffb74d"  # Light orange
+
+# Telegram bot configuration
+telegram:
+  token: "YOUR_BOT_TOKEN_HERE"  # Get this from BotFather
+  chat_id: "YOUR_CHAT_ID_HERE"  # Must be a numeric ID, get it from @userinfobot
+
+# Scheduled tasks configuration
+schedules:
+  - id: "morning_report"
+    day_of_week: "mon-fri"   # Monday to Friday
+    hour: 9                  # 9 AM
+    minute: 0                # At exactly 9:00 AM
+    
+  - id: "market_close"
+    day_of_week: "mon-fri"   # Monday to Friday
+    hour: 16                 # 4 PM
+    minute: 30               # At exactly 4:30 PM 

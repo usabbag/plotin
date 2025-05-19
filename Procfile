@@ -1,1 +1,1 @@
-web: python main.py --schedule --send
+web: python main.py --schedule
