@@ -1,3 +1,6 @@
+config.yaml
+.env 
+
 # Python
 __pycache__/
 *.py[cod]
@@ -37,5 +40,3 @@ ENV/
 output/
 
 # Secrets
-config.yaml
-.env 
