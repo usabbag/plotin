@@ -24,9 +24,16 @@ def get_stock_data(symbol, period_days=30, interval='4h'):
         start_date = end_date - timedelta(days=period_days)
         
         # Add extra days to ensure we have enough data for indicators
-        # For 128-period SMA with 4h data, we need at least 128 * 4 hours = 512 hours ≈ 21 days
-        # Adding 150 days buffer to be safe (since 4h data isn't available on weekends)
-        buffer_start_date = start_date - timedelta(days=150)
+        # For daily charts: need at least 128 days of history for the 128 SMA
+        # For 4h charts: need at least 128 periods (roughly 21 days, but add extra for weekends/gaps)
+        if interval == '1d':
+            # For daily data, ensure we have at least 200 days of history (128 + buffer)
+            buffer_days = 200  
+        else:
+            # For 4h data, add 150 days buffer (was already working well)
+            buffer_days = 150
+            
+        buffer_start_date = start_date - timedelta(days=buffer_days)
         
         logging.info(f"Retrieving {interval} data for {symbol} from {buffer_start_date.date()} to {end_date.date()}")
         

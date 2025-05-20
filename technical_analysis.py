@@ -31,7 +31,7 @@ def add_indicators(data):
         pandas.DataFrame: Data with technical indicators added
     """
     if len(data) < 128:
-        logging.warning(f"Insufficient data for 128-period SMA. Data length: {len(data)}")
+        logging.warning(f"Insufficient data for 128-period SMA. Data length: {len(data)}, need at least 128 data points.")
         return None
     
     try:

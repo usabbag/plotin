@@ -36,7 +36,7 @@ async def process_stocks(config, send_to_telegram=False):
     # Extract configuration values
     symbols = config['stocks']
     period_days = config['time_period']
-    interval = config['interval']
+    interval = config['interval']  # This will be used for 4h charts
     output_dir = config['output']['directory']
     chart_config = config['chart']
     
@@ -50,41 +50,79 @@ async def process_stocks(config, send_to_telegram=False):
             logging.error("Failed to initialize Telegram manager. Charts won't be sent.")
             send_to_telegram = False
     
-    # Retrieve stock data
-    stock_data = get_multiple_stocks_data(symbols, period_days, interval)
-    if not stock_data:
-        logging.error("Failed to retrieve any stock data. Exiting.")
+    # Retrieve stock data - for both daily and 4h intervals
+    daily_stock_data = get_multiple_stocks_data(symbols, period_days, '1d')
+    if not daily_stock_data:
+        logging.error("Failed to retrieve any daily stock data.")
+        return False
+    
+    hourly_stock_data = get_multiple_stocks_data(symbols, period_days, interval)
+    if not hourly_stock_data:
+        logging.error("Failed to retrieve any hourly stock data.")
         return False
     
     success_count = 0
     # Process each stock
-    for symbol, data in stock_data.items():
+    for symbol in symbols:
         logging.info(f"Processing {symbol}")
         
-        # Add technical indicators
-        data_with_indicators = add_indicators(data)
-        if data_with_indicators is None:
-            logging.error(f"Failed to add indicators for {symbol}. Skipping.")
-            continue
+        # Process daily data first
+        if symbol in daily_stock_data:
+            daily_data = daily_stock_data[symbol]
             
-        # Generate chart
-        chart_path = os.path.join(output_dir, f"{symbol}_chart.png")
-        success = generate_chart(data_with_indicators, symbol, output_dir, chart_config)
-        if success:
-            logging.info(f"Successfully generated chart for {symbol}")
-            success_count += 1
-            
-            # Send to Telegram if requested
-            if send_to_telegram and telegram_manager:
-                logging.info(f"Sending {symbol} chart to Telegram")
-                await telegram_manager.send_stock_analysis(
-                    symbol, 
-                    chart_path, 
-                    f"Analysis for {symbol} using {period_days} days of data with {interval} interval."
-                )
+            # Add technical indicators
+            daily_data_with_indicators = add_indicators(daily_data)
+            if daily_data_with_indicators is not None:
+                # Generate daily chart
+                daily_chart_path = os.path.join(output_dir, f"{symbol}_1d_chart.png")
+                daily_success = generate_chart(daily_data_with_indicators, symbol, output_dir, chart_config, interval='1d')
+                if daily_success:
+                    logging.info(f"Successfully generated daily chart for {symbol}")
+                    
+                    # Send to Telegram if requested
+                    if send_to_telegram and telegram_manager:
+                        logging.info(f"Sending {symbol} daily chart to Telegram")
+                        await telegram_manager.send_stock_analysis(
+                            symbol, 
+                            daily_chart_path, 
+                            f"Daily analysis for {symbol} using {period_days} days of data."
+                        )
+                else:
+                    logging.error(f"Failed to generate daily chart for {symbol}")
+            else:
+                logging.error(f"Failed to add indicators for {symbol} daily data. Skipping.")
         else:
-            logging.error(f"Failed to generate chart for {symbol}")
-    
+            logging.error(f"No daily data available for {symbol}. Skipping.")
+            
+        # Then process 4h data
+        if symbol in hourly_stock_data:
+            hourly_data = hourly_stock_data[symbol]
+            
+            # Add technical indicators
+            hourly_data_with_indicators = add_indicators(hourly_data)
+            if hourly_data_with_indicators is not None:
+                # Generate 4h chart
+                hourly_chart_path = os.path.join(output_dir, f"{symbol}_4h_chart.png")
+                hourly_success = generate_chart(hourly_data_with_indicators, symbol, output_dir, chart_config, interval='4h')
+                if hourly_success:
+                    logging.info(f"Successfully generated 4h chart for {symbol}")
+                    success_count += 1
+                    
+                    # Send to Telegram if requested
+                    if send_to_telegram and telegram_manager:
+                        logging.info(f"Sending {symbol} 4h chart to Telegram")
+                        await telegram_manager.send_stock_analysis(
+                            symbol, 
+                            hourly_chart_path, 
+                            f"4-hour analysis for {symbol} using {period_days} days of data."
+                        )
+                else:
+                    logging.error(f"Failed to generate 4h chart for {symbol}")
+            else:
+                logging.error(f"Failed to add indicators for {symbol} 4h data. Skipping.")
+        else:
+            logging.error(f"No 4h data available for {symbol}. Skipping.")
+            
     if success_count > 0:
         logging.info(f"Successfully processed {success_count} out of {len(symbols)} stocks")
         return True
