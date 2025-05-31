@@ -4,22 +4,61 @@ import os
 
 def load_config(config_file='config.yaml'):
     """
-    Load configuration from YAML file.
-    
-    Args:
-        config_file (str): Path to config file
-        
-    Returns:
-        dict: Configuration dictionary or None if loading fails
+    Load configuration from YAML file, with fallback to template and environment overrides.
     """
     try:
-        if not os.path.exists(config_file):
-            logging.error(f"Config file not found: {config_file}")
+        # Try to load config.yaml first (local development)
+        if os.path.exists(config_file):
+            with open(config_file, 'r') as file:
+                config = yaml.safe_load(file)
+        # If config.yaml doesn't exist, try template (Railway deployment)
+        elif os.path.exists('config.yaml.template'):
+            logging.info("config.yaml not found, using config.yaml.template")
+            with open('config.yaml.template', 'r') as file:
+                config = yaml.safe_load(file)
+        else:
+            logging.error("Neither config.yaml nor config.yaml.template found")
             return None
+        
+        # Override with environment variables if they exist (for Railway)
+        # Log available environment variables for debugging
+        logging.info("Checking for environment variable overrides...")
+        
+        if os.getenv('STOCKS'):
+            stocks_env = os.getenv('STOCKS')
+            # Convert comma-separated string to list
+            config['stocks'] = [stock.strip() for stock in stocks_env.split(',')]
+            logging.info(f"Overriding stocks from environment: {config['stocks']}")
+        else:
+            logging.info("No STOCKS environment variable found")
             
-        with open(config_file, 'r') as file:
-            config = yaml.safe_load(file)
+        # Ensure telegram section exists before trying to update it
+        if 'telegram' not in config:
+            config['telegram'] = {}
             
+        if os.getenv('TELEGRAM_TOKEN'):
+            config['telegram']['token'] = os.getenv('TELEGRAM_TOKEN')
+            logging.info("Telegram token loaded from environment variable")
+        else:
+            logging.warning("No TELEGRAM_TOKEN environment variable found")
+            
+        if os.getenv('TELEGRAM_CHAT_ID'):
+            config['telegram']['chat_id'] = os.getenv('TELEGRAM_CHAT_ID')
+            logging.info(f"Telegram chat ID loaded from environment: {config['telegram']['chat_id']}")
+        else:
+            logging.warning("No TELEGRAM_CHAT_ID environment variable found")
+            
+        # Check if Telegram values are still placeholders after env override attempt
+        if config.get('telegram', {}).get('token') in ['YOUR_BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE', None, '']:
+            logging.warning("Telegram token is not configured properly (still has placeholder value)")
+            if 'telegram' in config:
+                config['telegram']['token'] = None
+                
+        if config.get('telegram', {}).get('chat_id') in ['YOUR_CHAT_ID', 'YOUR_CHAT_ID_HERE', None, '']:
+            logging.warning("Telegram chat ID is not configured properly (still has placeholder value)")
+            if 'telegram' in config:
+                config['telegram']['chat_id'] = None
+        
         validate_config(config)
         return config
         

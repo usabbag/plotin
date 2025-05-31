@@ -123,4 +123,13 @@ def create_telegram_manager(config):
     token = config['telegram']['token']
     chat_id = config['telegram'].get('chat_id')
     
+    # Check for None or placeholder values
+    if not token or token in ['YOUR_BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE']:
+        logging.error("Telegram bot token is not properly configured")
+        return None
+        
+    if not chat_id or chat_id in ['YOUR_CHAT_ID', 'YOUR_CHAT_ID_HERE']:
+        logging.error("Telegram chat ID is not properly configured")
+        return None
+    
     return TelegramManager(token, chat_id) 
