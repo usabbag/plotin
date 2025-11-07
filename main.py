@@ -187,8 +187,8 @@ async def scheduled_task(config):
     Args:
         config (dict): Configuration dictionary
     """
-        logging.info("Running scheduled stock analysis task")
-        await process_stocks(config, send_to_telegram=True)
+    logging.info("Running scheduled stock analysis task")
+    await process_stocks(config, send_to_telegram=True)
 
 def main():
     """
