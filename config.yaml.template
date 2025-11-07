@@ -15,6 +15,13 @@ chart:
   sma_50_color: "#42a5f5"   # Bright blue
   sma_128_color: "#ffb74d"  # Light orange
 
+notifications:
+  enabled: true
+  near_cross_threshold_pct: 0.75   # <= pct distance between SMAs to call it "near"
+  cooldown_hours: 6                # Minimum hours between identical alerts
+  alignment_enabled: true          # Extra alert when 4h & daily both bullish
+  state_file: "./output/signal_state.json"  # Where alert state is cached
+
 # Telegram bot configuration
 telegram:
   token: "YOUR_BOT_TOKEN_HERE"  # Get this from BotFather

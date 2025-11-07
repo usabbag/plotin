@@ -9,6 +9,7 @@ A simple Python tool to generate finance charts with technical indicators and se
 - Retrieves historical stock data using yfinance
 - Calculates 50 and 128 period Simple Moving Averages (SMAs)
 - Generates dark-themed candlestick charts with technical indicators
+- Optional golden-cross notifications that blend 4h and daily signals
 - Sends chart analysis to Telegram (optional)
 - Supports scheduled analysis at configurable times
 - Fully configurable through YAML configuration file
@@ -79,6 +80,21 @@ schedules:
     hour: 9                  # 9 AM
     minute: 0                # At exactly 9:00 AM
 ```
+
+### Golden Cross Notifications
+
+Plotin can broadcast SMA 50/128 golden crosses (and near-cross convergence) for both the daily and 4-hour charts. Configure the feature via the `notifications` block in `config.yaml`:
+
+```yaml
+notifications:
+  enabled: true
+  near_cross_threshold_pct: 0.75   # Max % spread to consider "near"
+  cooldown_hours: 6                # Minimum hours between identical alerts
+  alignment_enabled: true          # Extra ping when 4h + daily agree
+  state_file: "./output/signal_state.json"
+```
+
+Alerts reuse the same Telegram bot when `--send` is provided. If Telegram is disabled, the alert text is logged locally so you can still monitor signals.
 
 ## Usage
 

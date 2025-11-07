@@ -105,4 +105,22 @@ def validate_config(config):
     
     for key, default_value in chart_defaults.items():
         if key not in config['chart']:
-            config['chart'][key] = default_value 
+            config['chart'][key] = default_value
+    
+    if 'notifications' not in config:
+        config['notifications'] = {}
+    
+    notifications_defaults = {
+        'enabled': True,
+        'near_cross_threshold_pct': 0.75,
+        'cooldown_hours': 6,
+        'alignment_enabled': True
+    }
+    
+    for key, default_value in notifications_defaults.items():
+        if key not in config['notifications']:
+            config['notifications'][key] = default_value
+    
+    if not config['notifications'].get('state_file'):
+        output_dir = config['output']['directory']
+        config['notifications']['state_file'] = os.path.join(output_dir, 'signal_state.json')

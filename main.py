@@ -1,14 +1,26 @@
 import logging
 import os
 import argparse
-import time
 import asyncio
+from datetime import datetime, timezone
 from config_manager import load_config
 from data_retrieval import get_multiple_stocks_data
-from technical_analysis import add_indicators
+from technical_analysis import add_indicators, analyze_golden_cross_state
 from chart_generation import generate_chart
 from telegram_bot import create_telegram_manager
 from scheduler import create_schedule_manager_from_config
+from notifications import (
+    load_signal_state,
+    save_signal_state,
+    get_previous_state,
+    update_state,
+    should_send_notification,
+    build_signal_message,
+    build_alignment_message,
+    DEFAULT_STATE_FILENAME
+)
+
+POSITIVE_STATES = {'golden', 'near'}
 
 def setup_logging():
     """Set up logging configuration."""
@@ -39,6 +51,15 @@ async def process_stocks(config, send_to_telegram=False):
     interval = config['interval']  # This will be used for 4h charts
     output_dir = config['output']['directory']
     chart_config = config['chart']
+    notification_config = config.get('notifications', {})
+    notifications_enabled = notification_config.get('enabled', False)
+    near_cross_threshold = float(notification_config.get('near_cross_threshold_pct', 0.75))
+    cooldown_hours = float(notification_config.get('cooldown_hours', 6))
+    alignment_enabled = notification_config.get('alignment_enabled', True)
+    state_file = notification_config.get('state_file') or os.path.join(output_dir, DEFAULT_STATE_FILENAME)
+    
+    signal_state = load_signal_state(state_file) if notifications_enabled else {}
+    state_dirty = False
     
     logging.info(f"Analyzing {len(symbols)} stocks: {', '.join(symbols)}")
     
@@ -47,8 +68,11 @@ async def process_stocks(config, send_to_telegram=False):
     if send_to_telegram:
         telegram_manager = create_telegram_manager(config)
         if not telegram_manager:
-            logging.error("Failed to initialize Telegram manager. Charts won't be sent.")
+            logging.error("Failed to initialize Telegram manager. Charts and alerts won't be sent.")
             send_to_telegram = False
+    
+    if notifications_enabled and not send_to_telegram:
+        logging.info("Notifications enabled but --send flag not provided. Alerts will be logged only.")
     
     # Retrieve stock data - for both daily and 4h intervals
     daily_stock_data = get_multiple_stocks_data(symbols, period_days, '1d')
@@ -65,6 +89,7 @@ async def process_stocks(config, send_to_telegram=False):
     # Process each stock
     for symbol in symbols:
         logging.info(f"Processing {symbol}")
+        timeframe_states = {}
         
         # Process daily data first
         if symbol in daily_stock_data:
@@ -73,6 +98,11 @@ async def process_stocks(config, send_to_telegram=False):
             # Add technical indicators
             daily_data_with_indicators = add_indicators(daily_data)
             if daily_data_with_indicators is not None:
+                if notifications_enabled:
+                    daily_signal = analyze_golden_cross_state(daily_data_with_indicators, near_cross_threshold)
+                    if daily_signal:
+                        timeframe_states['1d'] = daily_signal
+                
                 # Generate daily chart
                 daily_chart_path = os.path.join(output_dir, f"{symbol}_1d_chart.png")
                 daily_success = generate_chart(daily_data_with_indicators, symbol, output_dir, chart_config, interval='1d')
@@ -101,6 +131,11 @@ async def process_stocks(config, send_to_telegram=False):
             # Add technical indicators
             hourly_data_with_indicators = add_indicators(hourly_data)
             if hourly_data_with_indicators is not None:
+                if notifications_enabled:
+                    hourly_signal = analyze_golden_cross_state(hourly_data_with_indicators, near_cross_threshold)
+                    if hourly_signal:
+                        timeframe_states['4h'] = hourly_signal
+                
                 # Generate 4h chart
                 hourly_chart_path = os.path.join(output_dir, f"{symbol}_4h_chart.png")
                 hourly_success = generate_chart(hourly_data_with_indicators, symbol, output_dir, chart_config, interval='4h')
@@ -122,7 +157,22 @@ async def process_stocks(config, send_to_telegram=False):
                 logging.error(f"Failed to add indicators for {symbol} 4h data. Skipping.")
         else:
             logging.error(f"No 4h data available for {symbol}. Skipping.")
+        
+        if notifications_enabled and timeframe_states:
+            symbol_dirty = await handle_symbol_notifications(
+                symbol=symbol,
+                timeframe_states=timeframe_states,
+                signal_state=signal_state,
+                telegram_manager=telegram_manager if send_to_telegram else None,
+                near_cross_threshold=near_cross_threshold,
+                cooldown_hours=cooldown_hours,
+                alignment_enabled=alignment_enabled
+            )
+            state_dirty = state_dirty or symbol_dirty
             
+    if notifications_enabled and state_dirty:
+        save_signal_state(signal_state, state_file)
+    
     if success_count > 0:
         logging.info(f"Successfully processed {success_count} out of {len(symbols)} stocks")
         return True
@@ -137,8 +187,8 @@ async def scheduled_task(config):
     Args:
         config (dict): Configuration dictionary
     """
-    logging.info("Running scheduled stock analysis task")
-    await process_stocks(config, send_to_telegram=True)
+        logging.info("Running scheduled stock analysis task")
+        await process_stocks(config, send_to_telegram=True)
 
 def main():
     """
@@ -198,6 +248,62 @@ async def run_scheduled_mode(config, run_initial=False):
     except KeyboardInterrupt:
         logging.info("Received exit signal. Shutting down...")
         schedule_manager.shutdown()
+
+async def handle_symbol_notifications(symbol, timeframe_states, signal_state, telegram_manager,
+                                      near_cross_threshold, cooldown_hours, alignment_enabled):
+    state_dirty = False
+    sent_flags = {}
+    
+    for timeframe, state_info in timeframe_states.items():
+        previous = get_previous_state(signal_state, symbol, timeframe)
+        should_send = should_send_notification(previous, state_info, cooldown_hours)
+        new_entry = dict(state_info)
+        
+        if should_send:
+            message = build_signal_message(symbol, timeframe, state_info, near_cross_threshold)
+            if telegram_manager:
+                await telegram_manager.send_message(message)
+            else:
+                logging.info(f"[Notification] {message}")
+            new_entry['last_notified_at'] = datetime.now(timezone.utc).isoformat()
+        elif previous and previous.get('last_notified_at'):
+            new_entry['last_notified_at'] = previous['last_notified_at']
+        
+        update_state(signal_state, symbol, timeframe, new_entry)
+        sent_flags[timeframe] = should_send
+        state_dirty = True
+    
+    if alignment_enabled:
+        fast_state = timeframe_states.get('4h')
+        slow_state = timeframe_states.get('1d')
+        if fast_state and slow_state:
+            fast_positive = fast_state.get('state') in POSITIVE_STATES
+            slow_positive = slow_state.get('state') in POSITIVE_STATES
+            if fast_positive and slow_positive and sent_flags.get('4h'):
+                alignment_record = {
+                    'state': 'alignment',
+                    'timestamp': fast_state.get('timestamp'),
+                    'fast_state': fast_state.get('state'),
+                    'slow_state': slow_state.get('state'),
+                    'is_fresh_cross': fast_state.get('is_fresh_cross', False)
+                }
+                previous_alignment = get_previous_state(signal_state, symbol, 'alignment')
+                send_alignment = should_send_notification(previous_alignment, alignment_record, cooldown_hours)
+                
+                if send_alignment:
+                    message = build_alignment_message(symbol, '4h', fast_state, '1d', slow_state)
+                    if telegram_manager:
+                        await telegram_manager.send_message(message)
+                    else:
+                        logging.info(f"[Notification] {message}")
+                    alignment_record['last_notified_at'] = datetime.now(timezone.utc).isoformat()
+                elif previous_alignment and previous_alignment.get('last_notified_at'):
+                    alignment_record['last_notified_at'] = previous_alignment['last_notified_at']
+                
+                update_state(signal_state, symbol, 'alignment', alignment_record)
+                state_dirty = True
+    
+    return state_dirty
 
 if __name__ == "__main__":
     main() 
